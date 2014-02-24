@@ -1,13 +1,17 @@
 <?php
+#Simple PHP ORM
 
-namespace sphorm;
-
-class ORM{
+class Udara{
 	
 	public $dbo;
 
 	function __construct($dbo=false){
+		if($dbo == false) self::__destruct();
 		$this->dbo = $dbo;
+	}
+
+	function __destruct(){
+		return "There was a problem";
 	}
 
 	public function getColumnNames(){
@@ -26,12 +30,12 @@ class ORM{
 
 	public function table($table=false, $attrs=false){
 		return $table == false || gettype($table) == 'array' ? 
-			false : new ORMTable($table, $attrs, $this->dbo);
+			false : new UTable($table, $attrs, $this->dbo);
 	}
 
 	public function view($table=false, $q=false){
 		return $table == false || gettype($table) == 'array' ? 
-			false : new ORMView($table, $q, $this->dbo);
+			false : new UView($table, $q, $this->dbo);
 	}
 
 	public function fetch($q){		
@@ -51,6 +55,15 @@ class ORM{
 		}
 	}
 
+	public function paginate($q, $page=1, $count=10){
+		$q = $q." LIMIT='".((int)$count)."' OFFSET='".(((int)$page)-1)*((int)$count)."'";
+		try{
+			return $this->fetch($q);
+		} catch(Exception $e){
+			return false;
+		}
+	}	
+
 	public function write($q){
 		$this->dbo->query($q);
 	}
@@ -65,7 +78,7 @@ class ORM{
 }
 
 #Table mapper
-class ORMTable extends ORM{
+class UTable extends Udara{
 	public $dbo;
 	public $table;
 
@@ -85,7 +98,12 @@ class ORMTable extends ORM{
 		$count = count($attrs);
 		$i = 1;
 		foreach($attrs as $k=>$v){
-			$q .= $i == $count ? "{$k} {$v} " : "{$k} {$v}, ";	
+			if($k == 'primary key'){
+				$q .= $i == $count ? "{$k} ({$v}) " : "{$k} ({$v}), ";
+			} else {
+				$q .= $i == $count ? "{$k} {$v} " : "{$k} {$v}, ";	
+			}
+				
 			$i++;
 		}
 		$q .= ")";		
@@ -168,7 +186,7 @@ class ORMTable extends ORM{
 
 	public function row($val, $col='id'){
 		try{
-			$row = new ORMRow($val, $col, $this->table, $this->dbo);
+			$row = new URow($val, $col, $this->table, $this->dbo);
 		} catch(PDOException $e){
 			$row = false;
 		}
@@ -216,7 +234,7 @@ class ORMTable extends ORM{
 	purely for the purpose of replicating the table actions 
 	except for the creation of a view
 */
-class ORMView extends ORMTable{
+class UView extends UTable{
 	function __construct($table=false, $q=false, $dbo){
 		$this->dbo = $dbo;
 		$this->table = $table;
@@ -247,7 +265,7 @@ class ORMView extends ORMTable{
 /**
 	row maper	
 */
-class ORMRow extends ORM{
+class URow extends Udara{
 	public $dbo;
 	public $table;
 	public $column;
