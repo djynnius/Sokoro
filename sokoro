@@ -1,0 +1,322 @@
+<?php
+/**
+* @package Sokoro Object Relational Mapper (ORM)
+* @version 1
+* @author djyninus <psilent@gmail.com> Ikakke Ikpe
+* @link https://github.com/djynnius/Sokoro
+* @link https://github.com/djynnius/Sokoro.git
+*/
+namespace Sokoro;
+use \PDO as PDO;
+
+Class ORM{
+
+	static public $table;
+
+	function __construct(){
+		if(phpversion() < "5.4"){
+			return false;
+			self::__destruct();
+			exit;
+		}
+	}
+
+	static function prepare($val){
+		return addslashes($val);
+	}
+
+	static function execute($sql){
+		return self::cxn()->query($sql);
+	}
+
+	/**
+	* @param [string] $file full path to config file
+	*/
+	static public function config($file=false){
+		return new ORMConfig($file);
+	}
+
+	static public function cxn($config=false){
+		$config = $config == false ? self::config() : $config;
+		$adapter = $config->setting("adapter");
+		$db = $config->setting("db");
+		$user = $config->setting("user");
+		$pass = $config->setting("pass");
+		$host = $config->setting("host");
+
+		$cxn = new ORMCxn($adapter, $db, $user, $pass, $host);
+		return $cxn;
+	}
+
+	static function create($table, $description=[]){
+
+		$id["id"] = !isset($description["id"]) ?  
+			"integer primary key auto_increment not null" : $description["id"];
+		$description = array_merge($id, $description); /*ensures ID is first column in DB*/
+		$description["created_by"] = !isset($description["created_by"]) ? 
+			"integer" : $description["created_by"];
+		$description["created_at"] = !isset($description["created_at"]) ? 
+			"datetime" : $description["created_at"];
+		$description["updated_by"] = !isset($description["updated_by"]) ? 
+			"integer" : $description["updated_by"];
+		$description["updated_at"] = !isset($description["updated_at"]) ? 
+			"datetime" : $description["updated_at"];
+
+		$sql = "CREATE TABLE IF NOT EXISTS `{$table}` (";
+		
+		$pair = [];
+		foreach($description as $col=>$val){
+			$pair[] = "{$col} {$val}";
+		}
+
+		$sql .= join(", ", $pair);
+		$sql .= ")";
+		self::execute($sql);
+	}
+
+	static function rows($sql="*"){
+		$sql = $sql == "*" ? "SELECT * FROM `".self::$table."`" : $sql;
+		$records = self::execute($sql);
+
+		$r = [];
+		while($a = $records->fetch(PDO::FETCH_ASSOC)){
+			$r[] = (object)$a;
+		}
+		return $r;
+	}
+
+	static function row($val, $col="id"){
+		return new ORMRecord($val, $col, self::$table);
+	}
+
+	static function add($values=[]){
+		$cols = array_keys($values);
+		$vals = array_values($values);
+		foreach($cols as $i=>$col){
+			$cols[$i] = "`{$col}`";
+		}
+		foreach($vals as $i=>$val){
+			$val = self::prepare($val);
+			$vals[$i] = "'{$val}'";
+		}
+
+		$sql = "INSERT INTO `".self::$table."` ( ";	
+		$sql .= join(", ", $cols);
+		$sql .= " ) VALUES ( ";
+		$sql .= join(", ", $vals);
+		$sql .= " )";
+
+		self::execute($sql);
+	}
+
+	static function update($val, $values=[], $col="id"){
+		$pair = [];
+		foreach($values as $c=>$v){
+			$v = self::prepare($v);
+			$pair[] = "`{$c}`='{$v}'";
+		}
+
+		$sql = "UPDATE `".self::$table."` SET ";
+		$sql .= join(", ", $pair);
+		$sql .= " WHERE `{$col}`='{$val}'";
+
+		self::execute($sql);
+	}
+
+	static function remove($val, $col="id"){
+		$sql = "DELETE FROM `".self::$table."` WHERE `{$col}`='{$val}'";
+		self::execute($sql);
+	}
+
+	static function firstRecord($val, $col="id"){
+		$sql = "	SELECT id 
+					FROM `".self::$table."` 
+					WHERE `{$col}`='{$val}' 
+					ORDER BY id ASC LIMIT 1";
+		$id = self::execute($sql)->fetchObject()->id;
+		return new ORMRecord($val, $col, self::$table);
+	}
+
+	static function lastRecord($val, $col="id"){
+		$sql = "	SELECT id 
+					FROM `".self::$table."` 
+					WHERE `{$col}`='{$val}' 
+					ORDER BY id DESC LIMIT 1";
+		$id = self::execute($sql)->fetchObject()->id;
+		return new ORMRecord($val, $col, self::$table);		
+	}
+
+	static function find($val, $col){
+		$sql = "SELECT * FROM `".self::$table."` WHERE `{$col}` LIKE '%{$val}%' ";
+		return self::rows($sql);
+	}
+
+	static function findFirst(){
+		$sql = "SELECT * FROM `".self::$table."` WHERE `{$col}` LIKE '%{$val}%' ORDER BY id ASC LIMIT 1";
+		return (object)self::execute($sql)[0];
+	}
+
+	static function findLast(){
+		$sql = "SELECT * FROM `".self::$table."` WHERE `{$col}` LIKE '%{$val}%' ORDER BY id DESC LIMIT 1";
+		return (object)self::execute($sql)[0];		
+	}
+
+	static function prev($val, $col="id"){
+		$sql = "SELECT * FROM `".self::$table."` WHERE `{$col}`<'{$val}' ORDER BY id ASC LIMIT 1";
+		return (object)self::execute($sql)[0];		
+	}
+
+	static function next($val, $col="id"){
+		$sql = "SELECT * FROM `".self::$table."` WHERE `{$col}`>'{$val}' ORDER BY id ASC LIMIT 1";
+		return (object)self::execute($sql)[0];		
+	}
+
+	static function exists($vars=false){
+		/**/
+	}
+}
+
+
+/**
+* ORMRecord returns a PDO query fetchObject for a single row
+*/
+class ORMRecord extends ORM{
+
+	public $record;
+
+	function __construct($val=false, $col, $table){
+		$sql = "SELECT * FROM `{$table}` WHERE `{$col}`='{$val}' ORDER BY id DESC LIMIT 1";
+		$this->record = self::execute($sql)->fetchObject();
+	}
+
+	function __destruct(){
+		return false;
+	}
+
+	function __get($attr){
+		if(!property_exists($this, $attr) && @property_exists($this->record, $attr)){
+			return $this->record->$attr;
+		}
+	}
+
+	function commit(){
+		$obj = (array)$this;
+		$db = (array)$this->record;
+
+		$ok = array_keys($obj);
+		$dk = array_keys($db);
+
+		$pair = [];
+		foreach($obj as $k=>$v){
+			if(in_array($k, $dk) && $db[$k] != $obj[$k]){
+				$pair[$k] = $v;			
+			}
+		}
+
+		$return = isset($this->record->id) ? self::update($this->record->id, $pair) : false;
+
+	}
+
+	static public function remove(){
+		/*remove record*/
+	}
+
+}
+
+
+
+/**
+* ORM connection abstracts PDO
+*/
+class ORMCxn {
+	public $adapter;
+	public $db;
+	public $user;
+	public $pass;
+	public $host;
+
+	public function __construct($adapter=false, $db=false, $user=false, $pass=false, $host=false){
+		$this->adapter = $adapter;
+		$this->host = $host;
+		$this->user = $user;
+		$this->pass = $pass;
+		$this->db = $db;
+		$this->pdo = self::$adapter($db, $user, $pass, $host);
+	}
+
+	public function mysql($db, $user, $pass, $host){
+		return new PDO("mysql:host={$this->host};dbname={$this->db}", $this->user, $this->pass);
+	}
+
+	public function sqlite($db){
+		return new PDO("sqlite:" . $db);
+	}
+
+	public function oracle($db, $user, $pass, $host){}
+
+	public function postgre($db, $user, $pass, $host){}
+
+	public function mssql($db, $user, $pass, $host){}
+
+	public function query($sql){
+		return $this->pdo->query($sql);
+	}
+}
+
+
+/**
+* Default config file
+*/
+class ORMConfig{
+
+	public $file; /*config file*/
+	public $conf; /*config file contents*/
+	public $data; /*JSON */
+
+	/**
+	* @param string $conf the full path to the config file
+	*/
+	function __construct($file=false){	
+		$this->file = $file == false ? "cxn.cnf" : $file;
+		$this->conf = file_get_contents($this->file);
+		$this->data = json_decode($this->conf);
+	}
+
+	/**
+	* The getter setter method for config file
+	* @param string $item
+	* @param mixed $value
+	* @return boolean only returns boolen false if arguments are not 1 or 2
+	*/
+	public function setting($item=false, $value=false){
+		switch(count(func_get_args())){
+			case 1:
+				return self::get($item);
+				break;
+			case 2:
+				self::set($item, $value);
+				break;
+			default:
+				return false;
+		}
+	}
+
+	/**
+	* The getter method for config file
+	* @param string $item
+	* @return boolean only returns boolen false if the setting is not set
+	*/	
+	private function get($item){
+		return isset($this->data->$item) ? $this->data->$item : false;
+	}
+
+	/**
+	* The setter method for config file
+	* @param string $item
+	* @param mixed $value
+	*/
+	private function set($item, $value){
+		$this->data->$item = $value;
+		file_put_contents($this->file, json_encode($this->data, JSON_PRETTY_PRINT));
+	}
+}
