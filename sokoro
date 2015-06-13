@@ -29,6 +29,12 @@ Class ORM{
 		return self::cxn()->query($sql);
 	}
 
+	static function singleRecord($sql){
+		$id = self::execute($sql)->fetchObject()->id;
+		return new ORMRecord($id, "id", self::$table); 
+	}
+
+
 	/**
 	* @param [string] $file full path to config file
 	*/
@@ -51,16 +57,16 @@ Class ORM{
 	static function create($table, $description=[]){
 
 		$id["id"] = !isset($description["id"]) ?  
-			"integer primary key auto_increment not null" : $description["id"];
+			"INT PRIMARY KEY AUTO_INCREMENT NOT  NULL" : $description["id"];
 		$description = array_merge($id, $description); /*ensures ID is first column in DB*/
 		$description["created_by"] = !isset($description["created_by"]) ? 
-			"integer" : $description["created_by"];
+			"INT" : $description["created_by"];
 		$description["created_at"] = !isset($description["created_at"]) ? 
-			"datetime" : $description["created_at"];
+			"DATETIME" : $description["created_at"];
 		$description["updated_by"] = !isset($description["updated_by"]) ? 
-			"integer" : $description["updated_by"];
+			"INT" : $description["updated_by"];
 		$description["updated_at"] = !isset($description["updated_at"]) ? 
-			"datetime" : $description["updated_at"];
+			"TIMESTAMP DEFAULT NOW() ON UPDATE NOW()" : $description["updated_at"];
 
 		$sql = "CREATE TABLE IF NOT EXISTS `{$table}` (";
 		
@@ -71,6 +77,7 @@ Class ORM{
 
 		$sql .= join(", ", $pair);
 		$sql .= ")";
+
 		self::execute($sql);
 	}
 
@@ -85,11 +92,21 @@ Class ORM{
 		return $r;
 	}
 
+	/**
+	* Alias for rows
+	*/
+	static function read($sql="*"){
+		self::rows();
+	}
+
 	static function row($val, $col="id"){
 		return new ORMRecord($val, $col, self::$table);
 	}
 
 	static function add($values=[]){
+
+		$values["created_at"] = strftime("%Y-%m-%d %H:%M:%S", time());
+
 		$cols = array_keys($values);
 		$vals = array_values($values);
 		foreach($cols as $i=>$col){
@@ -107,6 +124,17 @@ Class ORM{
 		$sql .= " )";
 
 		self::execute($sql);
+	}
+
+	/**
+	* Alias for add
+	*/
+	static function insert($values=[]){
+		self::add($values=[]);
+	}
+
+	static function truncate(){
+		self::execute("TRUNCATE TABLE `".self::$table."`");
 	}
 
 	static function update($val, $values=[], $col="id"){
@@ -128,51 +156,86 @@ Class ORM{
 		self::execute($sql);
 	}
 
-	static function firstRecord($val, $col="id"){
-		$sql = "	SELECT id 
+	static function firstRecord($val=false, $col="id"){
+		$sql = $val == false ? 
+				"	SELECT id 
+					FROM `".self::$table."`  
+					ORDER BY id ASC LIMIT 1" 
+					:
+				"	SELECT id 
 					FROM `".self::$table."` 
 					WHERE `{$col}`='{$val}' 
 					ORDER BY id ASC LIMIT 1";
-		$id = self::execute($sql)->fetchObject()->id;
-		return new ORMRecord($val, $col, self::$table);
+
+		return self::singleRecord($sql);
 	}
 
-	static function lastRecord($val, $col="id"){
-		$sql = "	SELECT id 
+	static function lastRecord($val=false, $col="id"){
+		$sql = $val == false ? 
+				"	SELECT id 
+					FROM `".self::$table."`  
+					ORDER BY id DESC LIMIT 1" 
+					:
+				"	SELECT id 
 					FROM `".self::$table."` 
 					WHERE `{$col}`='{$val}' 
 					ORDER BY id DESC LIMIT 1";
-		$id = self::execute($sql)->fetchObject()->id;
-		return new ORMRecord($val, $col, self::$table);		
+
+		return self::singleRecord($sql);		
 	}
 
-	static function find($val, $col){
+	static function find($col, $val){
 		$sql = "SELECT * FROM `".self::$table."` WHERE `{$col}` LIKE '%{$val}%' ";
 		return self::rows($sql);
 	}
 
-	static function findFirst(){
-		$sql = "SELECT * FROM `".self::$table."` WHERE `{$col}` LIKE '%{$val}%' ORDER BY id ASC LIMIT 1";
-		return (object)self::execute($sql)[0];
+	static function findFirst($col, $val){
+		$sql = "SELECT id FROM `".self::$table."` WHERE `{$col}` LIKE '%{$val}%' ORDER BY id ASC LIMIT 1";
+		return self::singleRecord($sql);
 	}
 
-	static function findLast(){
-		$sql = "SELECT * FROM `".self::$table."` WHERE `{$col}` LIKE '%{$val}%' ORDER BY id DESC LIMIT 1";
-		return (object)self::execute($sql)[0];		
+	static function findLast($col, $val){
+		$sql = "SELECT id FROM `".self::$table."` WHERE `{$col}` LIKE '%{$val}%' ORDER BY id DESC LIMIT 1";
+		return self::singleRecord($sql);		
 	}
 
 	static function prev($val, $col="id"){
-		$sql = "SELECT * FROM `".self::$table."` WHERE `{$col}`<'{$val}' ORDER BY id ASC LIMIT 1";
-		return (object)self::execute($sql)[0];		
+		$sql = "SELECT id FROM `".self::$table."` WHERE `{$col}`<'{$val}' ORDER BY id ASC LIMIT 1";
+		return self::singleRecord($sql);		
 	}
 
 	static function next($val, $col="id"){
-		$sql = "SELECT * FROM `".self::$table."` WHERE `{$col}`>'{$val}' ORDER BY id ASC LIMIT 1";
-		return (object)self::execute($sql)[0];		
+		$sql = "SELECT id FROM `".self::$table."` WHERE `{$col}`>'{$val}' ORDER BY id ASC LIMIT 1";
+		return self::singleRecord($sql);		
 	}
 
-	static function exists($vars=false){
+	static function exists(){
 		/**/
+		$args = func_get_args();
+
+		if(count($args) == 1 && gettype($args[0]) == "integer") 
+			$sql = "SELECT COUNT(id) AS count FROM `".self::$table."` WHERE id='{$args[0]}'";
+
+		if(count($args) == 2) 
+			$sql = "SELECT COUNT(id) AS count FROM `".self::$table."` WHERE `{$args[0]}`='{$args[1]}'";
+
+		if(count($args) == 1 && gettype($args[0]) == "array"){
+			$sql = "SELECT COUNT(id) AS count FROM ".self::$table." WHERE ";
+			$pairs = [];
+			foreach($args[0] as $col=>$val){
+				$pairs[] = "`{$col}`='{$val}'";
+			}
+			$pairs = join(" AND ", $pairs);
+			$sql .= $pairs;
+		} 
+			
+		if(isset($sql)){
+			$count = self::execute($sql)->fetchObject()->count;
+			$bool = $count == 0 ? false : true;
+
+		}
+
+		return !isset($sql) ? false : $bool;
 	}
 }
 
@@ -217,13 +280,19 @@ class ORMRecord extends ORM{
 
 	}
 
-	static public function remove(){
+	function destroy(){
 		/*remove record*/
+		self::remove($this->record->id);
+	}
+
+	/**
+	* Alias for destroy
+	*/
+	function delete(){
+		self::destroy();
 	}
 
 }
-
-
 
 /**
 * ORM connection abstracts PDO
