@@ -22,6 +22,10 @@ Class ORM{
 		}
 	}
 
+	static function table($table){
+		self::$table = $table;
+	}
+
 	static function prepare($val){
 		return addslashes($val);
 	}
