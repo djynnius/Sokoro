@@ -12,6 +12,7 @@ use \PDO as PDO;
 Class ORM{
 
 	static public $table;
+	static public $config;
 
 	function __construct(){
 		if(phpversion() < "5.4"){
@@ -31,19 +32,19 @@ Class ORM{
 
 	static function singleRecord($sql){
 		$id = self::execute($sql)->fetchObject()->id;
-		return new ORMRecord($id, "id", self::$table); 
+		return self::row($id); 
 	}
-
 
 	/**
 	* @param [string] $file full path to config file
 	*/
 	static public function config($file=false){
-		return new ORMConfig($file);
+		self::$config = new ORMConfig($file);
 	}
 
-	static public function cxn($config=false){
-		$config = $config == false ? self::config() : $config;
+	static public function cxn(){
+		if(is_null(self::$config)) self::config();
+		$config = self::$config;
 		$adapter = $config->setting("adapter");
 		$db = $config->setting("db");
 		$user = $config->setting("user");
@@ -99,8 +100,10 @@ Class ORM{
 		self::rows();
 	}
 
-	static function row($val, $col="id"){
-		return new ORMRecord($val, $col, self::$table);
+	static function row($arg1=false, $arg2=false){
+		return $arg2 == false ? 
+			new ORMRecord($arg1, "id", self::$table) 	: 
+			new ORMRecord($arg2, $arg1, self::$table);
 	}
 
 	static function add($values=[]){
@@ -137,9 +140,47 @@ Class ORM{
 		self::execute("TRUNCATE TABLE `".self::$table."`");
 	}
 
-	static function update($val, $values=[], $col="id"){
+	static function update($col=false, $val=false, $values=false){
+		$args = func_get_args();
+		switch (count($args)) {
+			case 2:
+				if(!is_array($args[0]) && is_array($args[1])){
+					$sql = self::updateById($args[0], $args[1]);
+				} else {
+					return false;
+				}
+				break;
+			case 2:
+				if(is_string($args[0]) && !is_array($args[1]) && is_array($args[2])){
+					$sql = self::updateByColumnAndValue($args[0], $args[1], $args[2]);
+				} else {
+					return false;
+				}
+				break;
+			default:
+				return false;
+		}
+		self::execute($sql);
+		return true;
+	}
+
+	private function updateById($id, $record){
 		$pair = [];
-		foreach($values as $c=>$v){
+		foreach($record as $c=>$v){
+			$v = self::prepare($v);
+			$pair[] = "`{$c}`='{$v}'";
+		}
+
+		$sql = "UPDATE `".self::$table."` SET ";
+		$sql .= join(", ", $pair);
+		$sql .= " WHERE `id`='{$id}'";
+
+		return $sql;		
+	}
+
+	private function updateByColumnAndValue($col, $val, $record){
+		$pair = [];
+		foreach($record as $c=>$v){
 			$v = self::prepare($v);
 			$pair[] = "`{$c}`='{$v}'";
 		}
@@ -148,15 +189,21 @@ Class ORM{
 		$sql .= join(", ", $pair);
 		$sql .= " WHERE `{$col}`='{$val}'";
 
+		return $sql;
+	}
+
+	/**
+	* @param $col;
+	* @param $val;
+	*/
+	static function remove($col=false, $val=false){
+		$sql = $col != false && $val == false ? 
+			"DELETE FROM `".self::$table."` WHERE `id`='{$col}'" : 
+			"DELETE FROM `".self::$table."` WHERE `{$col}`='{$val}'";
 		self::execute($sql);
 	}
 
-	static function remove($val, $col="id"){
-		$sql = "DELETE FROM `".self::$table."` WHERE `{$col}`='{$val}'";
-		self::execute($sql);
-	}
-
-	static function firstRecord($val=false, $col="id"){
+	static function firstRecord($col=false, $val=false){
 		$sql = $val == false ? 
 				"	SELECT id 
 					FROM `".self::$table."`  
@@ -170,7 +217,7 @@ Class ORM{
 		return self::singleRecord($sql);
 	}
 
-	static function lastRecord($val=false, $col="id"){
+	static function lastRecord($col=false, $val=false){
 		$sql = $val == false ? 
 				"	SELECT id 
 					FROM `".self::$table."`  
@@ -186,7 +233,8 @@ Class ORM{
 
 	static function find($col, $val){
 		$sql = "SELECT * FROM `".self::$table."` WHERE `{$col}` LIKE '%{$val}%' ";
-		return self::rows($sql);
+		$records = self::rows($sql);
+		return count($records) == 0 ? [] : $records;
 	}
 
 	static function findFirst($col, $val){
@@ -199,13 +247,13 @@ Class ORM{
 		return self::singleRecord($sql);		
 	}
 
-	static function prev($val, $col="id"){
-		$sql = "SELECT id FROM `".self::$table."` WHERE `{$col}`<'{$val}' ORDER BY id ASC LIMIT 1";
+	static function previous($id){
+		$sql = "SELECT id FROM `".self::$table."` WHERE `id`<'{$id}' ORDER BY id ASC LIMIT 1";
 		return self::singleRecord($sql);		
 	}
 
-	static function next($val, $col="id"){
-		$sql = "SELECT id FROM `".self::$table."` WHERE `{$col}`>'{$val}' ORDER BY id ASC LIMIT 1";
+	static function next($id){
+		$sql = "SELECT id FROM `".self::$table."` WHERE `id`>'{$id}' ORDER BY id ASC LIMIT 1";
 		return self::singleRecord($sql);		
 	}
 
@@ -213,13 +261,13 @@ Class ORM{
 		/**/
 		$args = func_get_args();
 
-		if(count($args) == 1 && gettype($args[0]) == "integer") 
+		if(count($args) == 1 && !is_array($args[0])) 
 			$sql = "SELECT COUNT(id) AS count FROM `".self::$table."` WHERE id='{$args[0]}'";
 
-		if(count($args) == 2) 
+		if(count($args) == 2 && !is_array($args[1])) 
 			$sql = "SELECT COUNT(id) AS count FROM `".self::$table."` WHERE `{$args[0]}`='{$args[1]}'";
 
-		if(count($args) == 1 && gettype($args[0]) == "array"){
+		if(count($args) == 1 && is_array($args[0])){
 			$sql = "SELECT COUNT(id) AS count FROM ".self::$table." WHERE ";
 			$pairs = [];
 			foreach($args[0] as $col=>$val){
@@ -346,6 +394,7 @@ class ORMConfig{
 	* @param string $conf the full path to the config file
 	*/
 	function __construct($file=false){	
+		$file = $file != false ? $file . ".cnf" : $file;
 		$this->file = $file == false ? "cxn.cnf" : $file;
 		$this->conf = file_get_contents($this->file);
 		$this->data = json_decode($this->conf);
