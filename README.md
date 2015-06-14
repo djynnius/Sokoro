@@ -40,7 +40,7 @@ the id column as PK which auto increments is essential to Sokoro functioning as 
 
 set the table:
 
-	Sokoro::$table = "table_name";
+	Sokoro::table("table_name");
 
 To insert a new record:
 	
