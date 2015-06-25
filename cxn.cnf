@@ -1,7 +1,7 @@
 {
     "adapter": "mysql",
     "host": "localhost",
-    "user": "user",
-    "pass": "pass", 
-    "db": "urDB"
+    "user": "root",
+    "pass": "password", 
+    "db": "my_app"
 }

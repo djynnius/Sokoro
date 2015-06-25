@@ -101,7 +101,7 @@ Class ORM{
 	* Alias for rows
 	*/
 	static function read($sql="*"){
-		self::rows();
+		return self::rows($sql);
 	}
 
 	static function row($arg1=false, $arg2=false){
@@ -129,7 +129,6 @@ Class ORM{
 		$sql .= " ) VALUES ( ";
 		$sql .= join(", ", $vals);
 		$sql .= " )";
-
 		self::execute($sql);
 	}
 
@@ -137,7 +136,7 @@ Class ORM{
 	* Alias for add
 	*/
 	static function insert($values=[]){
-		self::add($values=[]);
+		self::add($values);
 	}
 
 	static function truncate(){
@@ -209,11 +208,11 @@ Class ORM{
 
 	static function firstRecord($col=false, $val=false){
 		$sql = $val == false ? 
-				"	SELECT id 
+				"	SELECT * 
 					FROM `".self::$table."`  
 					ORDER BY id ASC LIMIT 1" 
 					:
-				"	SELECT id 
+				"	SELECT * 
 					FROM `".self::$table."` 
 					WHERE `{$col}`='{$val}' 
 					ORDER BY id ASC LIMIT 1";
@@ -223,15 +222,14 @@ Class ORM{
 
 	static function lastRecord($col=false, $val=false){
 		$sql = $val == false ? 
-				"	SELECT id 
+				"	SELECT * 
 					FROM `".self::$table."`  
 					ORDER BY id DESC LIMIT 1" 
 					:
-				"	SELECT id 
+				"	SELECT * 
 					FROM `".self::$table."` 
 					WHERE `{$col}`='{$val}' 
 					ORDER BY id DESC LIMIT 1";
-
 		return self::singleRecord($sql);		
 	}
 
