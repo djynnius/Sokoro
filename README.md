@@ -96,7 +96,7 @@ THE ORMRecord Object
 
 To get a single record as object:
 
-	$row = Sokoro::row(1);
+	$row = Sokoro::row(1); //alias is record()
 
 this will return record with id=1 as object
 
@@ -151,10 +151,11 @@ Others
 
 	Sokoro::exists(['col_name'=>'value'...]); //checks if record with array pairs as col_name=val exists in the DB and returns a boolean
 
+	Sokoro::count() or Sokoro::length() will return the number of records in the index table
+
 
 You may change the DB accessed by pointing to a new cnf file:
 
 	Sokoro::config("/path/to/new_config"); //without the .cnf extension
 
 *Sokoro was designed deliberately not to be singleton.
-

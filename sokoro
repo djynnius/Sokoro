@@ -22,6 +22,34 @@ Class ORM{
 		}
 	}
 
+	/**
+	* @param [string] $file full path to config file
+	*/
+	static public function config($file=false){
+		self::$config = new ORMConfig($file);
+	}
+
+	static function count(){
+		return count(self::read());
+	}
+
+	static function length(){
+		return self::count();
+	}
+
+	static public function cxn(){
+		if(is_null(self::$config)) self::config();
+		$config = self::$config;
+		$adapter = $config->setting("adapter");
+		$db = $config->setting("db");
+		$user = $config->setting("user");
+		$pass = $config->setting("pass");
+		$host = $config->setting("host");
+
+		$cxn = new ORMCxn($adapter, $db, $user, $pass, $host);
+		return $cxn;
+	}
+
 	static function table($table){
 		self::$table = $table;
 	}
@@ -39,28 +67,14 @@ Class ORM{
 		return self::row($id); 
 	}
 
-	/**
-	* @param [string] $file full path to config file
-	*/
-	static public function config($file=false){
-		self::$config = new ORMConfig($file);
-	}
-
-	static public function cxn(){
-		if(is_null(self::$config)) self::config();
-		$config = self::$config;
-		$adapter = $config->setting("adapter");
-		$db = $config->setting("db");
-		$user = $config->setting("user");
-		$pass = $config->setting("pass");
-		$host = $config->setting("host");
-
-		$cxn = new ORMCxn($adapter, $db, $user, $pass, $host);
-		return $cxn;
-	}
-
 	static function create($table, $description=[]){
+		$adapter = self::$config->setting("adapter");
+		$mthd = "create_".$adapter;
+		$sql = self::$mthd($table, $description);
+		self::execute($sql);
+	}
 
+	private function create_mysql($table, $description){
 		$id["id"] = !isset($description["id"]) ?  
 			"INT PRIMARY KEY AUTO_INCREMENT NOT  NULL" : $description["id"];
 		$description = array_merge($id, $description); /*ensures ID is first column in DB*/
@@ -81,9 +95,35 @@ Class ORM{
 		}
 
 		$sql .= join(", ", $pair);
-		$sql .= ")";
+		$sql .= ")";		
 
-		self::execute($sql);
+		return $sql;
+	}
+
+	private function create_sqlite($table, $description){
+		$id["id"] = !isset($description["id"]) ?  
+			"INTEGER PRIMARY KEY " : $description["id"];
+		$description = array_merge($id, $description); /*ensures ID is first column in DB*/
+		$description["created_by"] = !isset($description["created_by"]) ? 
+			"INT" : $description["created_by"];
+		$description["created_at"] = !isset($description["created_at"]) ? 
+			"TEXT" : $description["created_at"];
+		$description["updated_by"] = !isset($description["updated_by"]) ? 
+			"INT" : $description["updated_by"];
+		$description["updated_at"] = !isset($description["updated_at"]) ? 
+			"TEXT" : $description["updated_at"];
+
+		$sql = "CREATE TABLE IF NOT EXISTS `{$table}` (";
+		
+		$pair = [];
+		foreach($description as $col=>$val){
+			$pair[] = "{$col} {$val}";
+		}
+
+		$sql .= join(", ", $pair);
+		$sql .= ")";		
+
+		return $sql;		
 	}
 
 	static function rows($sql="*"){
@@ -108,6 +148,13 @@ Class ORM{
 		return $arg2 == false ? 
 			new ORMRecord($arg1, "id", self::$table) 	: 
 			new ORMRecord($arg2, $arg1, self::$table);
+	}
+
+	/**
+	* Alias for row
+	*/
+	static function record($arg1=false, $arg2=false){
+		return self::row($arg1, $arg2);
 	}
 
 	static function add($values=[]){
@@ -145,9 +192,11 @@ Class ORM{
 
 	static function update($col=false, $val=false, $values=false){
 		$args = func_get_args();
+
 		switch (count($args)) {
 			case 2:
 				if(!is_array($args[0]) && is_array($args[1])){
+					$args[1]["updated_at"] = self::updated_at();
 					$sql = self::updateById($args[0], $args[1]);
 				} else {
 					return false;
@@ -155,6 +204,7 @@ Class ORM{
 				break;
 			case 2:
 				if(is_string($args[0]) && !is_array($args[1]) && is_array($args[2])){
+					$args[2]["updated_at"] = self::updated_at();
 					$sql = self::updateByColumnAndValue($args[0], $args[1], $args[2]);
 				} else {
 					return false;
@@ -165,6 +215,15 @@ Class ORM{
 		}
 		self::execute($sql);
 		return true;
+	}
+
+	private function updated_at(){
+		if(self::$config->setting("adapter") != "mysql"){
+			return strftime("%Y-%m-%d %H:%M:%S", time());
+		} else {
+			return null;
+		}
+
 	}
 
 	private function updateById($id, $record){
@@ -208,11 +267,11 @@ Class ORM{
 
 	static function firstRecord($col=false, $val=false){
 		$sql = $val == false ? 
-				"	SELECT * 
+				"	SELECT id 
 					FROM `".self::$table."`  
 					ORDER BY id ASC LIMIT 1" 
 					:
-				"	SELECT * 
+				"	SELECT id 
 					FROM `".self::$table."` 
 					WHERE `{$col}`='{$val}' 
 					ORDER BY id ASC LIMIT 1";
@@ -220,17 +279,25 @@ Class ORM{
 		return self::singleRecord($sql);
 	}
 
+	static function first($col=false, $val=false){
+		return self::firstRecord($col, $val);
+	}
+
 	static function lastRecord($col=false, $val=false){
 		$sql = $val == false ? 
-				"	SELECT * 
+				"	SELECT id
 					FROM `".self::$table."`  
 					ORDER BY id DESC LIMIT 1" 
 					:
-				"	SELECT * 
+				"	SELECT id
 					FROM `".self::$table."` 
 					WHERE `{$col}`='{$val}' 
 					ORDER BY id DESC LIMIT 1";
 		return self::singleRecord($sql);		
+	}
+
+	static function last($col=false, $val=false){
+		return self::lastRecord($col, $val);
 	}
 
 	static function find($col, $val){
@@ -256,7 +323,7 @@ Class ORM{
 
 	static function next($id){
 		$sql = "SELECT id FROM `".self::$table."` WHERE `id`>'{$id}' ORDER BY id ASC LIMIT 1";
-		return self::singleRecord($sql);		
+		return self::singleRecord($sql);	
 	}
 
 	static function exists(){
@@ -355,7 +422,7 @@ class ORMCxn {
 	public $host;
 
 	public function __construct($adapter=false, $db=false, $user=false, $pass=false, $host=false){
-		$this->adapter = $adapter;
+		$this->adapter = strtolower(trim($adapter));
 		$this->host = $host;
 		$this->user = $user;
 		$this->pass = $pass;
@@ -396,10 +463,10 @@ class ORMConfig{
 	* @param string $conf the full path to the config file
 	*/
 	function __construct($file=false){	
-		$file = $file != false ? $file . ".cnf" : $file;
 		$this->file = $file == false ? "cxn.cnf" : $file;
 		$this->conf = file_get_contents($this->file);
 		$this->data = json_decode($this->conf);
+		
 	}
 
 	/**
