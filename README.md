@@ -24,6 +24,10 @@ include sokoro without an extension to your php file
 
 	include "sokoro";
 
+if you dont have a config file in your root you may explicitly specify the path to one using the config method:
+
+	Sokoro::config("/path/to/config.file");
+
 next stop to create a table:
 
 	Sokoro::create("table_name", ['col_name'=>"varchar(30)"]);
@@ -38,7 +42,7 @@ updated_by int possibly for FK
 
 the id column as PK which auto increments is essential to Sokoro functioning as expected
 
-set the table:
+set the table pointer to the table you intend to work with:
 
 	Sokoro::table("table_name");
 
