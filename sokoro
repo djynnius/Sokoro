@@ -195,7 +195,7 @@ if(phpversion() >= "5.4"){
 						return false;
 					}
 					break;
-				case 2:
+				case 3:
 					if(is_string($args[0]) && !is_array($args[1]) && is_array($args[2])){
 						$args[2]["updated_at"] = self::updated_at();
 						$sql = self::updateByColumnAndValue($args[0], $args[1], $args[2]);
