@@ -73,8 +73,9 @@ if(phpversion() >= "5.4"){
 			$user = $config->setting("user");
 			$pass = $config->setting("pass");
 			$host = $config->setting("host");
+			$port = $config->setting("port");
 
-			$cxn = new ORMCxn($adapter, $db, $user, $pass, $host);
+			$cxn = new ORMCxn($adapter, $db, $user, $pass, $host, $port=false);
 			return $cxn;
 		}
 
@@ -116,68 +117,24 @@ if(phpversion() >= "5.4"){
 		* $description ['email'=>"varchar(30)", 'dob'=>"date", 'address'=>"text"... ]
 		*/
 		static function create($table, $description=[]){
-			$adapter = self::$config->setting("adapter");
-			$mthd = "create_".$adapter;
-			$sql = self::$mthd($table, $description);
+
+			$sql = "";
+
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = MySQL::create();
+					break;
+				case "sqlite":
+					$sql = SQLite3::create();
+					break;
+				case "postgre":
+					$sql = PostgreSQL::create();
+					break;
+				default:
+					$sql = RDBMS::create();
+			}
+
 			self::execute($sql);
-		}
-
-		/**
-		* MySQL table generator
-		*/
-		private function create_mysql($table, $description){
-			$id["id"] = !isset($description["id"]) ?  
-				"INT PRIMARY KEY AUTO_INCREMENT NOT  NULL" : $description["id"];
-			$description = array_merge($id, $description); /*ensures ID is first column in DB*/
-			$description["created_by"] = !isset($description["created_by"]) ? 
-				"INT" : $description["created_by"];
-			$description["created_at"] = !isset($description["created_at"]) ? 
-				"DATETIME" : $description["created_at"];
-			$description["updated_by"] = !isset($description["updated_by"]) ? 
-				"INT" : $description["updated_by"];
-			$description["updated_at"] = !isset($description["updated_at"]) ? 
-				"TIMESTAMP DEFAULT NOW() ON UPDATE NOW()" : $description["updated_at"];
-
-			$sql = "CREATE TABLE IF NOT EXISTS `{$table}` (";
-			
-			$pair = [];
-			foreach($description as $col=>$val){
-				$pair[] = "{$col} {$val}";
-			}
-
-			$sql .= join(", ", $pair);
-			$sql .= ")";		
-
-			return $sql;
-		}
-
-		/**
-		* SQLite3 table generator
-		*/
-		private function create_sqlite($table, $description){
-			$id["id"] = !isset($description["id"]) ?  
-				"INTEGER PRIMARY KEY " : $description["id"];
-			$description = array_merge($id, $description); /*ensures ID is first column in DB*/
-			$description["created_by"] = !isset($description["created_by"]) ? 
-				"INT" : $description["created_by"];
-			$description["created_at"] = !isset($description["created_at"]) ? 
-				"TEXT" : $description["created_at"];
-			$description["updated_by"] = !isset($description["updated_by"]) ? 
-				"INT" : $description["updated_by"];
-			$description["updated_at"] = !isset($description["updated_at"]) ? 
-				"TEXT" : $description["updated_at"];
-
-			$sql = "CREATE TABLE IF NOT EXISTS `{$table}` (";
-			
-			$pair = [];
-			foreach($description as $col=>$val){
-				$pair[] = "{$col} {$val}";
-			}
-
-			$sql .= join(", ", $pair);
-			$sql .= ")";		
-
-			return $sql;		
 		}
 
 		/**
@@ -185,7 +142,21 @@ if(phpversion() >= "5.4"){
 		* @return array of stdObj of record 
 		*/
 		static function rows($sql="*"){
-			$sql = $sql == "*" ? "SELECT * FROM `".self::$table."`" : $sql;
+			
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = $sql == "*" ? MySQL::rows(self::$table) : $sql;
+					break;
+				case "sqlite":
+					$sql = $sql == "*" ? SQLite3::rows(self::$table) : $sql;
+					break;
+				case "postgre":
+					$sql = $sql == "*" ? PostgreSQL::rows(self::$table) : $sql;
+					break;
+				default:
+					$sql = $sql == "*" ? RDBMS::rows(self::$table) : $sql;
+			}
+			
 			$records = self::execute($sql);
 
 			$r = [];
@@ -208,8 +179,8 @@ if(phpversion() >= "5.4"){
 		*/
 		static function row($arg1=false, $arg2=false){
 			return $arg2 == false ? 
-				new ORMRecord($arg1, "id", self::$table) 	: 
-				new ORMRecord($arg2, $arg1, self::$table);
+				new ORMRecord($arg1, "id", self::$table, self::$config->settings("adapter")) 	: 
+				new ORMRecord($arg2, $arg1, self::$table, self::$config->settings("adapter"));
 		}
 
 		/**
@@ -237,11 +208,20 @@ if(phpversion() >= "5.4"){
 				$vals[$i] = "'{$val}'";
 			}
 
-			$sql = "INSERT INTO `".self::$table."` ( ";	
-			$sql .= join(", ", $cols);
-			$sql .= " ) VALUES ( ";
-			$sql .= join(", ", $vals);
-			$sql .= " )";
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = MySQL::add(self::$table, $cols, $vals);
+					break;
+				case "sqlite":
+					$sql = SQLite3::add(self::$table, $cols, $vals);
+					break;
+				case "postgre":
+					$sql = PostgreSQL::add(self::$table, $cols, $vals);
+					break;
+				default:
+					$sql = RDBMS::add(self::$table, $cols, $vals);
+			}
+
 			self::execute($sql);
 		}
 
@@ -257,13 +237,40 @@ if(phpversion() >= "5.4"){
 		* @param array or string 
 		*/
 		static function truncate($tables=[]){
+
 			if(is_array($table)){
 				foreach($tables as $table){
-					self::execute("TRUNCATE TABLE `".self::$table."`");		
+					switch(self::$config->settings("adapter")){
+						case "mysql":
+							$sql = MySQL::truncate($table);
+							break;
+						case "sqlite":
+							$sql = SQLite3::truncate($table);
+							break;
+						case "postgre":
+							$sql = PostgreSQL::truncate($table);
+							break;
+						default:
+							$sql = RDBMS::truncate($table);						
+					}
+					self::execute($sql);		
 				}
 			} else {
 				$table = (string)$tables;
-				self::execute("TRUNCATE TABLE `".self::$table."`");
+				switch(self::$config->settings("adapter")){
+					case "mysql":
+						$sql = MySQL::truncate($table);
+						break;
+					case "sqlite":
+						$sql = SQLite3::truncate($table);
+						break;
+					case "postgre":
+						$sql = PostgreSQL::truncate($table);
+						break;
+					default:
+						$sql = RDBMS::truncate($table);						
+				}
+				self::execute($sql);
 			}
 			
 		}
@@ -319,9 +326,19 @@ if(phpversion() >= "5.4"){
 				$pair[] = "`{$c}`='{$v}'";
 			}
 
-			$sql = "UPDATE `".self::$table."` SET ";
-			$sql .= join(", ", $pair);
-			$sql .= " WHERE `id`='{$id}'";
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = MySQL::updateById(self::$table, $pair, $id);
+					break;
+				case "sqlite":
+					$sql = SQLite3::updateById(self::$table, $pair, $id);
+					break;
+				case "postgre":
+					$sql = PostgreSQL::updateById(self::$table, $pair, $id);
+					break;
+				default:
+					$sql = RDBMS::updateById(self::$table, $pair, $id);
+			}
 
 			return $sql;		
 		}
@@ -336,9 +353,19 @@ if(phpversion() >= "5.4"){
 				$pair[] = "`{$c}`='{$v}'";
 			}
 
-			$sql = "UPDATE `".self::$table."` SET ";
-			$sql .= join(", ", $pair);
-			$sql .= " WHERE `{$col}`='{$val}'";
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = MySQL::updateByColumnAndValue(self::$table, $pair, $col, $val);
+					break;
+				case "sqlite":
+					$sql = SQLite3::updateByColumnAndValue(self::$table, $pair, $col, $val);
+					break;
+				case "postgre":
+					$sql = PostgreSQL::updateByColumnAndValue(self::$table, $pair, $col, $val);
+					break;
+				default:
+					$sql = RDBMS::updateByColumnAndValue(self::$table, $pair, $col, $val);
+			}
 
 			return $sql;
 		}
@@ -351,6 +378,20 @@ if(phpversion() >= "5.4"){
 			$sql = $col != false && $val == false ? 
 				"DELETE FROM `".self::$table."` WHERE `id`='{$col}'" : 
 				"DELETE FROM `".self::$table."` WHERE `{$col}`='{$val}'";
+
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = MySQL::remove($col, $val, self::$table);
+					break;
+				case "sqlite":
+					$sql = SQLite3::remove($col, $val, self::$table);
+					break;
+				case "postgre":
+					$sql = PostgreSQL::remove($col, $val, self::$table);
+					break;
+				default:
+					$sql = RDBMS::remove($col, $val, self::$table);
+			}	
 			self::execute($sql);
 		}
 
@@ -358,16 +399,19 @@ if(phpversion() >= "5.4"){
 		* @return ORMRecord object matching first params
 		*/
 		static function firstRecord($col=false, $val=false){
-			$sql = $val == false ? 
-					"	SELECT id 
-						FROM `".self::$table."`  
-						ORDER BY id ASC LIMIT 1" 
-						:
-					"	SELECT id 
-						FROM `".self::$table."` 
-						WHERE `{$col}`='{$val}' 
-						ORDER BY id ASC LIMIT 1";
-
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = MySQL::firstRecord($col, $val, self::$table);
+					break;
+				case "sqlite":
+					$sql = SQLite3::firstRecord($col, $val, self::$table);
+					break;
+				case "postgre":
+					$sql = PostgreSQL::firstRecord($col, $val, self::$table);
+					break;
+				default:
+					$sql = RDBMS::firstRecord($col, $val, self::$table);
+			}
 			return self::singleRecord($sql);
 		}
 
@@ -382,15 +426,19 @@ if(phpversion() >= "5.4"){
 		* @return ORMRecord object last record matching params
 		*/		
 		static function lastRecord($col=false, $val=false){
-			$sql = $val == false ? 
-					"	SELECT id
-						FROM `".self::$table."`  
-						ORDER BY id DESC LIMIT 1" 
-						:
-					"	SELECT id
-						FROM `".self::$table."` 
-						WHERE `{$col}`='{$val}' 
-						ORDER BY id DESC LIMIT 1";
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = MySQL::lastRecord($col, $val, self::$table);
+					break;
+				case "sqlite":
+					$sql = SQLite3::lastRecord($col, $val, self::$table);
+					break;
+				case "postgre":
+					$sql = PostgreSQL::lastRecord($col, $val, self::$table);
+					break;
+				default:
+					$sql = RDBMS::lastRecord($col, $val, self::$table);
+			}
 			return self::singleRecord($sql);		
 		}
 
@@ -405,7 +453,19 @@ if(phpversion() >= "5.4"){
 		* 
 		*/
 		static function find($col, $val){
-			$sql = "SELECT * FROM `".self::$table."` WHERE `{$col}` LIKE '%{$val}%' ";
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = MySQL::find($col, $val, self::$table);
+					break;
+				case "sqlite":
+					$sql = SQLite3::find($col, $val, self::$table);
+					break;
+				case "postgre":
+					$sql = PostgreSQL::find($col, $val, self::$table);
+					break;
+				default:
+					$sql = RDBMS::find($col, $val, self::$table);
+			}
 			$records = self::rows($sql);
 			return count($records) == 0 ? [] : $records;
 		}
@@ -414,7 +474,19 @@ if(phpversion() >= "5.4"){
 		* 
 		*/
 		static function findFirst($col, $val){
-			$sql = "SELECT id FROM `".self::$table."` WHERE `{$col}` LIKE '%{$val}%' ORDER BY id ASC LIMIT 1";
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = MySQL::findFirst($col, $val, self::$table);
+					break;
+				case "sqlite":
+					$sql = SQLite3::findFirst($col, $val, self::$table);
+					break;
+				case "postgre":
+					$sql = PostgreSQL::findFirst($col, $val, self::$table);
+					break;
+				default:
+					$sql = RDBMS::findFirst($col, $val, self::$table);
+			}
 			return self::singleRecord($sql);
 		}
 
@@ -422,7 +494,19 @@ if(phpversion() >= "5.4"){
 		* 
 		*/
 		static function findLast($col, $val){
-			$sql = "SELECT id FROM `".self::$table."` WHERE `{$col}` LIKE '%{$val}%' ORDER BY id DESC LIMIT 1";
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = MySQL::findLast($col, $val, self::$table);
+					break;
+				case "sqlite":
+					$sql = SQLite3::findLast($col, $val, self::$table);
+					break;
+				case "postgre":
+					$sql = PostgreSQL::findLast($col, $val, self::$table);
+					break;
+				default:
+					$sql = RDBMS::findLast($col, $val, self::$table);
+			}
 			return self::singleRecord($sql);		
 		}
 
@@ -430,7 +514,19 @@ if(phpversion() >= "5.4"){
 		* 
 		*/		
 		static function previous($id){
-			$sql = "SELECT id FROM `".self::$table."` WHERE `id`<'{$id}' ORDER BY id ASC LIMIT 1";
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = MySQL::previous($id, self::$table);
+					break;
+				case "sqlite":
+					$sql = SQLite3::previous($id, self::$table);
+					break;
+				case "postgre":
+					$sql = PostgreSQL::previous($id, self::$table);
+					break;
+				default:
+					$sql = RDBMS::previous($id, self::$table);
+			}
 			return self::singleRecord($sql);		
 		}
 
@@ -438,7 +534,20 @@ if(phpversion() >= "5.4"){
 		* 
 		*/		
 		static function next($id){
-			$sql = "SELECT id FROM `".self::$table."` WHERE `id`>'{$id}' ORDER BY id ASC LIMIT 1";
+
+			switch(self::$config->settings("adapter")){
+				case "mysql":
+					$sql = MySQL::next($id, self::$table);
+					break;
+				case "sqlite":
+					$sql = SQLite3::next($id, self::$table);
+					break;
+				case "postgre":
+					$sql = PostgreSQL::next($id, self::$table);
+					break;
+				default:
+					$sql = RDBMS::next($id, self::$table);
+			}
 			return self::singleRecord($sql);	
 		}
 
@@ -482,9 +591,25 @@ if(phpversion() >= "5.4"){
 	class ORMRecord extends ORM{
 
 		public $record;
+		public $adapter;
 
-		function __construct($val=false, $col, $table){
-			$sql = "SELECT * FROM `{$table}` WHERE `{$col}`='{$val}' ORDER BY id DESC LIMIT 1";
+		function __construct($val=false, $col, $table, $adapter){
+			
+			switch($adapter){
+				case "mysql":
+					$sql = MySQL::record($val, $col, $table);
+					break;
+				case "sqlite":
+					$sql = SQLite3::record($val, $col, $table);
+					break;
+				case "postgre":
+					$sql = PostgreSQL::record($val, $col, $table);
+					break;
+				default:
+					$sql = RDBMS::record($val, $col, $table);
+			}			
+
+			$this->adapter = $adapter;
 			$this->record = self::execute($sql)->fetchObject();
 		}
 
@@ -539,29 +664,33 @@ if(phpversion() >= "5.4"){
 		public $user;
 		public $pass;
 		public $host;
+		public $port;
 
-		public function __construct($adapter=false, $db=false, $user=false, $pass=false, $host=false){
+		public function __construct($adapter=false, $db=false, $user=false, $pass=false, $host=false, $port=false){
 			$this->adapter = strtolower(trim($adapter));
 			$this->host = $host;
+			$this->port = $port;
 			$this->user = $user;
 			$this->pass = $pass;
 			$this->db = $db;
-			$this->pdo = self::$adapter($db, $user, $pass, $host);
+			$this->pdo = self::$adapter($db, $user, $pass, $host, $port);
 		}
 
-		public function mysql($db, $user, $pass, $host){
-			return new PDO("mysql:host={$this->host};dbname={$this->db}", $this->user, $this->pass);
+		public function mysql($db, $user, $pass, $host, $port){
+			return new PDO("mysql:host={$this->host};port={$this->port};dbname={$this->db}", $this->user, $this->pass);
 		}
 
 		public function sqlite($db){
 			return new PDO("sqlite:" . $db);
 		}
 
-		public function oracle($db, $user, $pass, $host){}
+		public function oracle($db, $user, $pass, $host, $port){}
 
-		public function postgre($db, $user, $pass, $host){}
+		public function postgre($db, $user, $pass, $host, $port){
+			return new PDO("pgsql:host={$this->host};port={$this->port};dbname={$this->db}", $this->user, $this->pass);			
+		}
 
-		public function mssql($db, $user, $pass, $host){}
+		public function mssql($db, $user, $pass, $host, $port){}
 
 		public function query($sql){
 			return $this->pdo->query($sql);
@@ -636,17 +765,537 @@ if(phpversion() >= "5.4"){
 	/**
 	* MySQL specific queries
 	*/
-	class MySQL{}
+	class MySQL{
+		/**
+		*Script to create table
+		*/
+		static public function create(){
+			$id["id"] = !isset($description["id"]) ?  
+				"INT PRIMARY KEY AUTO_INCREMENT NOT  NULL" : $description["id"];
+			$description = array_merge($id, $description); /*ensures ID is first column in DB*/
+			$description["created_by"] = !isset($description["created_by"]) ? 
+				"INT" : $description["created_by"];
+			$description["created_at"] = !isset($description["created_at"]) ? 
+				"DATETIME" : $description["created_at"];
+			$description["updated_by"] = !isset($description["updated_by"]) ? 
+				"INT" : $description["updated_by"];
+			$description["updated_at"] = !isset($description["updated_at"]) ? 
+				"TIMESTAMP DEFAULT NOW() ON UPDATE NOW()" : $description["updated_at"];
+
+			$sql = "CREATE TABLE IF NOT EXISTS `{$table}` (";
+			
+			$pair = [];
+			foreach($description as $col=>$val){
+				$pair[] = "{$col} {$val}";
+			}
+
+			$sql .= join(", ", $pair);
+			$sql .= ")";		
+
+			return $sql;			
+		}		
+
+		static public function rows($table){
+			return "	SELECT * 
+						FROM `".$table."`
+					";
+		}
+
+		static public function record($val, $col, $table){
+			return "	SELECT * 
+						FROM `{$table}` 
+						WHERE `{$col}`='{$val}' 
+						ORDER BY id 
+						DESC LIMIT 1
+					";
+		}
+
+		static public function add($table, $cols, $vals){
+			$sql = "INSERT INTO `".$table."` ( ";	
+			$sql .= join(", ", $cols);
+			$sql .= " ) VALUES ( ";
+			$sql .= join(", ", $vals);
+			$sql .= " )";		
+			return $sql;	
+		}
+
+		static public function truncate($table){
+			return "TRUNCATE TABLE `".$table."`";			
+		}
+
+		static public function updateById($table, $pair, $id){
+			$sql = "UPDATE `".$table."` SET ";
+			$sql .= join(", ", $pair);
+			$sql .= " WHERE `id`='{$id}'";	
+			return $sql;		
+		}
+
+		static public function updateByColumnAndValue($table, $pair, $col, $val){
+			$sql = "UPDATE `".$table."` SET ";
+			$sql .= join(", ", $pair);
+			$sql .= " WHERE `{$col}`='{$val}'";			
+			return $sql;
+		}
+
+		static public function remove($col, $val, $table){
+			$sql = $col != false && $val == false ? 
+				"DELETE FROM `".$table."` WHERE `id`='{$col}'" : 
+				"DELETE FROM `".$table."` WHERE `{$col}`='{$val}'";
+			return $sql;
+		}
+
+
+		static public function firstRecord($col, $val, $table){
+			$sql = $val == false ? 
+					"	SELECT id 
+						FROM `".$table."`  
+						ORDER BY id ASC LIMIT 1" 
+						:
+					"	SELECT id 
+						FROM `".$table."` 
+						WHERE `{$col}`='{$val}' 
+						ORDER BY id ASC LIMIT 1";
+
+			return $sql;
+		}
+
+		/**
+		* @return ORMRecord object last record matching params
+		*/		
+		static public function lastRecord($col, $val, $table){
+			$sql = $val == false ? 
+					"	SELECT id
+						FROM `".$table."`  
+						ORDER BY id DESC LIMIT 1" 
+						:
+					"	SELECT id
+						FROM `".$table."` 
+						WHERE `{$col}`='{$val}' 
+						ORDER BY id DESC LIMIT 1";
+			return $sql;		
+		}
+
+		/**
+		* 
+		*/
+		static function find($col, $val, $table){
+			$sql = "	SELECT * 
+						FROM `".$table."` 
+						WHERE `{$col}` LIKE '%{$val}%' ";
+			return $sql;
+		}
+
+		/**
+		* 
+		*/
+		static function findFirst($col, $val, $table){
+			$sql = "	SELECT id 
+						FROM `".$table."` 
+						WHERE `{$col}` LIKE '%{$val}%' 
+						ORDER BY id ASC LIMIT 1
+					";
+			return $sql;
+		}
+
+		/**
+		* 
+		*/
+		static function findLast($col, $val, $table){
+			$sql = "	SELECT id 
+						FROM `".$table."` 
+						WHERE `{$col}` LIKE '%{$val}%' 
+						ORDER BY id DESC 
+						LIMIT 1
+			";
+			return $sql;		
+		}
+
+		/**
+		* 
+		*/		
+		static function previous($id, $table){
+			$sql = "	SELECT id 
+						FROM `".$table."` 
+						WHERE `id`<'{$id}' 
+						ORDER BY id ASC 
+						LIMIT 1
+			";
+			return $sql;		
+		}
+
+		/**
+		* 
+		*/		
+		static function next($id, $table){
+			$sql = "	SELECT id 
+						FROM `".$table."` 
+						WHERE `id`>'{$id}' 
+						ORDER BY id ASC 
+						LIMIT 1
+			";
+
+			return $sql;	
+		}
+
+		/**
+		* 
+		*/		
+		static function exists(){
+			/**/
+			$args = func_get_args();
+
+			if(count($args) == 1 && !is_array($args[0])) 
+				$sql = "SELECT COUNT(id) AS count FROM `".self::$table."` WHERE id='{$args[0]}'";
+
+			if(count($args) == 2 && !is_array($args[1])) 
+				$sql = "SELECT COUNT(id) AS count FROM `".self::$table."` WHERE `{$args[0]}`='{$args[1]}'";
+
+			if(count($args) == 1 && is_array($args[0])){
+				$sql = "SELECT COUNT(id) AS count FROM ".self::$table." WHERE ";
+				$pairs = [];
+				foreach($args[0] as $col=>$val){
+					$pairs[] = "`{$col}`='{$val}'";
+				}
+				$pairs = join(" AND ", $pairs);
+				$sql .= $pairs;
+			} 
+				
+			if(isset($sql)){
+				$count = self::execute($sql)->fetchObject()->count;
+				$bool = $count == 0 ? false : true;
+
+			}
+
+			return !isset($sql) ? false : $bool;
+		}
+
+	}
 
 	/**
 	* SQLite3 specific queries
 	*/
-	class SQLite3{}
+	class SQLite3{
+		/**
+		*Script to create table
+		*/
+		static public function create(){
+			$id["id"] = !isset($description["id"]) ?  
+				"INTEGER PRIMARY KEY " : $description["id"];
+			$description = array_merge($id, $description); /*ensures ID is first column in DB*/
+			$description["created_by"] = !isset($description["created_by"]) ? 
+				"INT" : $description["created_by"];
+			$description["created_at"] = !isset($description["created_at"]) ? 
+				"TEXT" : $description["created_at"];
+			$description["updated_by"] = !isset($description["updated_by"]) ? 
+				"INT" : $description["updated_by"];
+			$description["updated_at"] = !isset($description["updated_at"]) ? 
+				"TEXT" : $description["updated_at"];
+
+			$sql = "CREATE TABLE IF NOT EXISTS `{$table}` (";
+			
+			$pair = [];
+			foreach($description as $col=>$val){
+				$pair[] = "{$col} {$val}";
+			}
+
+			$sql .= join(", ", $pair);
+			$sql .= ")";		
+
+			return $sql;			
+		}
+
+		static public function rows($table){
+			return "SELECT * FROM `".$table."`";
+		}		
+
+
+		static public function record($val, $col, $table){
+			return "	SELECT * 
+						FROM `{$table}` 
+						WHERE `{$col}`='{$val}' 
+						ORDER BY id 
+						DESC LIMIT 1
+					";
+		}
+
+		static public function add($table, $cols, $vals){
+			$sql = "INSERT INTO `".$table."` ( ";	
+			$sql .= join(", ", $cols);
+			$sql .= " ) VALUES ( ";
+			$sql .= join(", ", $vals);
+			$sql .= " )";		
+			return $sql;	
+		}
+
+		static public function updateById($table, $pair, $id){
+			$sql = "UPDATE `".$table."` SET ";
+			$sql .= join(", ", $pair);
+			$sql .= " WHERE `id`='{$id}'";	
+			return $sql;		
+		}
+
+		static public function remove($col, $val, $table){
+			$sql = $col != false && $val == false ? 
+				"DELETE FROM `".$table."` WHERE `id`='{$col}'" : 
+				"DELETE FROM `".$table."` WHERE `{$col}`='{$val}'";
+			return $sql;
+		}
+
+		static public function firstRecord($col, $val, $table){
+			$sql = $val == false ? 
+					"	SELECT id 
+						FROM `".$table."`  
+						ORDER BY id ASC LIMIT 1" 
+						:
+					"	SELECT id 
+						FROM `".$table."` 
+						WHERE `{$col}`='{$val}' 
+						ORDER BY id ASC LIMIT 1";
+
+			return $sql;
+		}
+
+		/**
+		* @return ORMRecord object last record matching params
+		*/		
+		static public function lastRecord($col, $val, $table){
+			$sql = $val == false ? 
+					"	SELECT id
+						FROM `".$table."`  
+						ORDER BY id DESC LIMIT 1" 
+						:
+					"	SELECT id
+						FROM `".$table."` 
+						WHERE `{$col}`='{$val}' 
+						ORDER BY id DESC LIMIT 1";
+			return $sql;		
+		}
+
+		/**
+		* 
+		*/
+		static function find($col, $val, $table){
+			$sql = "	SELECT * 
+						FROM `".$table."` 
+						WHERE `{$col}` LIKE '%{$val}%' ";
+			return $sql;
+		}
+
+		/**
+		* 
+		*/
+		static function findFirst($col, $val, $table){
+			$sql = "	SELECT id 
+						FROM `".$table."` 
+						WHERE `{$col}` LIKE '%{$val}%' 
+						ORDER BY id ASC LIMIT 1
+					";
+			return $sql;
+		}
+
+		/**
+		* 
+		*/
+		static function findLast($col, $val, $table){
+			$sql = "	SELECT id 
+						FROM `".$table."` 
+						WHERE `{$col}` LIKE '%{$val}%' 
+						ORDER BY id DESC 
+						LIMIT 1
+			";
+			return $sql;		
+		}
+
+		/**
+		* 
+		*/		
+		static function previous($id, $table){
+			$sql = "	SELECT id 
+						FROM `".$table."` 
+						WHERE `id`<'{$id}' 
+						ORDER BY id ASC 
+						LIMIT 1
+			";
+			return $sql;		
+		}
+
+		/**
+		* 
+		*/		
+		static function next($id, $table){
+			$sql = "	SELECT id 
+						FROM `".$table."` 
+						WHERE `id`>'{$id}' 
+						ORDER BY id ASC 
+						LIMIT 1
+			";
+
+			return $sql;	
+		}
+	}
 
 	/**
 	* PostgreSQL specific queries
 	*/	
-	class PostgreSQL{}
+	class PostgreSQL{
+		/**
+		*Script to create table
+		*/
+		static public function create(){
+			$id["id"] = !isset($description["id"]) ?  
+				"INT PRIMARY KEY SERIAL" : $description["id"];
+			$description = array_merge($id, $description); /*ensures ID is first column in DB*/
+			$description["created_by"] = !isset($description["created_by"]) ? 
+				"INT" : $description["created_by"];
+			$description["created_at"] = !isset($description["created_at"]) ? 
+				"DATE" : $description["created_at"];
+			$description["updated_by"] = !isset($description["updated_by"]) ? 
+				"INT" : $description["updated_by"];
+			$description["updated_at"] = !isset($description["updated_at"]) ? 
+				"TIMESTAMP DEFAULT NOW() ON UPDATE NOW()" : $description["updated_at"];
+
+			$sql = "CREATE TABLE IF NOT EXISTS `{$table}` (";
+			
+			$pair = [];
+			foreach($description as $col=>$val){
+				$pair[] = "{$col} {$val}";
+			}
+
+			$sql .= join(", ", $pair);
+			$sql .= ")";		
+
+			return $sql;			
+		}		
+
+		static public function rows($table){
+			return "SELECT * FROM `".$table."`";
+		}		
+	
+		static public function record($val, $col, $table){
+			return "	SELECT * 
+						FROM `{$table}` 
+						WHERE `{$col}`='{$val}' 
+						ORDER BY id 
+						DESC LIMIT 1
+					";
+		}
+
+		static public function add($table, $cols, $vals){
+			$sql = "INSERT INTO `".$table."` ( ";	
+			$sql .= join(", ", $cols);
+			$sql .= " ) VALUES ( ";
+			$sql .= join(", ", $vals);
+			$sql .= " )";		
+			return $sql;	
+		}
+
+		static public function updateById($table, $pair, $id){
+			$sql = "UPDATE `".$table."` SET ";
+			$sql .= join(", ", $pair);
+			$sql .= " WHERE `id`='{$id}'";	
+			return $sql;		
+		}
+
+		static public function remove($col, $val, $table){
+			$sql = $col != false && $val == false ? 
+				"DELETE FROM `".$table."` WHERE `id`='{$col}'" : 
+				"DELETE FROM `".$table."` WHERE `{$col}`='{$val}'";
+			return $sql;
+		}
+
+		static public function firstRecord($col, $val, $table){
+			$sql = $val == false ? 
+					"	SELECT id 
+						FROM `".$table."`  
+						ORDER BY id ASC LIMIT 1" 
+						:
+					"	SELECT id 
+						FROM `".$table."` 
+						WHERE `{$col}`='{$val}' 
+						ORDER BY id ASC LIMIT 1";
+
+			return $sql;
+		}
+
+		/**
+		* @return ORMRecord object last record matching params
+		*/		
+		static public function lastRecord($col, $val, $table){
+			$sql = $val == false ? 
+					"	SELECT id
+						FROM `".$table."`  
+						ORDER BY id DESC LIMIT 1" 
+						:
+					"	SELECT id
+						FROM `".$table."` 
+						WHERE `{$col}`='{$val}' 
+						ORDER BY id DESC LIMIT 1";
+			return $sql;		
+		}
+
+		/**
+		* 
+		*/
+		static function find($col, $val, $table){
+			$sql = "	SELECT * 
+						FROM `".$table."` 
+						WHERE `{$col}` LIKE '%{$val}%' ";
+			return $sql;
+		}
+
+		/**
+		* 
+		*/
+		static function findFirst($col, $val, $table){
+			$sql = "	SELECT id 
+						FROM `".$table."` 
+						WHERE `{$col}` LIKE '%{$val}%' 
+						ORDER BY id ASC LIMIT 1
+					";
+			return $sql;
+		}
+
+		/**
+		* 
+		*/
+		static function findLast($col, $val, $table){
+			$sql = "	SELECT id 
+						FROM `".$table."` 
+						WHERE `{$col}` LIKE '%{$val}%' 
+						ORDER BY id DESC 
+						LIMIT 1
+			";
+			return $sql;		
+		}
+
+		/**
+		* 
+		*/		
+		static function previous($id, $table){
+			$sql = "	SELECT id 
+						FROM `".$table."` 
+						WHERE `id`<'{$id}' 
+						ORDER BY id ASC 
+						LIMIT 1
+			";
+			return $sql;		
+		}
+
+		/**
+		* 
+		*/		
+		static function next($id, $table){
+			$sql = "	SELECT id 
+						FROM `".$table."` 
+						WHERE `id`>'{$id}' 
+						ORDER BY id ASC 
+						LIMIT 1
+			";
+
+			return $sql;	
+		}
+
+	}
 
 	/**
 	* Oracle specific queries

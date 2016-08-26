@@ -18,7 +18,7 @@ Enter your database params in cxn.cnf
 	}
 
 
-*Note sokoro currently supports mysql only. Support for SQLite will soon be included and we have plans for Postgre and Oracle.
+*Currently supported adapters are "mysql", "postgre" and "sqlite" and should be entered as such in the config.
 
 include sokoro without an extension to your php file
 
