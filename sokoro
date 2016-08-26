@@ -627,5 +627,6 @@ if(phpversion() >= "5.4"){
 		}
 	}
 	/*SOKORO ENDS*/
+} else {
+	print "Your PHP version does not support Sokoro ORM. Upgrade to a version that is PHP5.4+";
 }
-
