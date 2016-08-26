@@ -626,6 +626,39 @@ if(phpversion() >= "5.4"){
 			file_put_contents($this->file, json_encode($this->data, JSON_PRETTY_PRINT));
 		}
 	}
+
+
+	/**
+	* RDBMS generic queries mostly based off MySQL
+	*/
+	class RDBMS{}	
+	
+	/**
+	* MySQL specific queries
+	*/
+	class MySQL{}
+
+	/**
+	* SQLite3 specific queries
+	*/
+	class SQLite3{}
+
+	/**
+	* PostgreSQL specific queries
+	*/	
+	class PostgreSQL{}
+
+	/**
+	* Oracle specific queries
+	*/	
+	class Oracle{}
+
+	/**
+	* MSSQL specific queries
+	*/	
+	class MSSQL{}
+
+
 	/*SOKORO ENDS*/
 } else {
 	print "Your PHP version does not support Sokoro ORM. Upgrade to a version that is PHP5.4+";
